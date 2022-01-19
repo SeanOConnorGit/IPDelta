@@ -1,0 +1,82 @@
+#--Label cmd to access script from other scripts-----
+label startADP
+
+clear
+
+#Debug step. Checking tStep var migrated from in.eam
+print "Initial value of tStep is: ${tStep}."
+print "Initial value of pathName is: ${pathName}."
+
+# ---------- Create Atoms ------------------------------
+#Lammps loop cmd starts from 1. Need to capture timestep 0 prior to starting loop.
+read_restart ${pathName}/restart_files/ref.restart.0
+
+neighbor 2.0 bin
+neigh_modify every 1 delay 0 check yes
+
+# ---------- Define Interatomic Potential --------------------- 
+if "${pot} == adp" then "pair_style adp" &
+ "pair_coeff * * Ti.adp Ti" &
+elif "${pot} == eam" "pair_style eam/fs" &
+ "pair_coeff * * Ti2.eam.fs Ti" &
+else "print 'Potential type not recognized.'" quit
+
+compute apE all pe/atom
+
+dump Dump0 all custom 1 ${pathName}/dump_files/${pot}Dump.txt id x y z vx vy vz fx fy fz c_apE
+dump_modify Dump0 sort id  #pbc yes
+
+run 0
+
+clear
+
+#Begin loop
+#--------------------------------------------------
+label       loop
+
+variable    loopEnd equal (${tStep}/${sRate})*${nRuns}
+variable    loopExit equal ${tStep}*${nRuns}
+variable    a loop ${loopEnd}
+
+variable    aScaled equal $a*${sRate}
+
+print       "timestep = ${aScaled}"
+if          "${aScaled} > ${loopExit}" then "jump SELF break"
+
+# ---------- Create Atoms ------------------------------
+read_restart ${pathName}/restart_files/ref.restart.${aScaled}
+
+print "Reading from restart file ref.restart.${aScaled}"
+
+neighbor 2.0 bin
+neigh_modify every 1 delay 0 check yes
+
+# ---------- Define Interatomic Potential --------------------- 
+if "${pot} == adp" then "pair_style adp" &
+ "pair_coeff * * Ti.adp Ti" &
+elif "${pot} == eam" "pair_style eam/fs" &
+ "pair_coeff * * Ti2.eam.fs Ti" &
+else "print 'Potential type not recognized.'" quit
+
+compute apE all pe/atom
+
+dump Dumploop all custom 1 ${pathName}/dump_files/${pot}Dumploop.${aScaled}.txt id x y z vx vy vz fx fy fz c_apE
+dump_modify Dumploop sort id  #pbc yes
+
+run 0
+
+#append adpDump.txt with current snapshot of adpDumploop.txt
+shell cat ${pathName}/dump_files/${pot}Dumploop.${aScaled}.txt >> ${pathName}/dump_files/${pot}Dump.txt
+
+shell rm ${pathName}/dump_files/${pot}Dumploop.${aScaled}.txt
+
+clear
+
+next        a
+jump        SELF loop
+label       break
+variable    a delete
+
+#----------Call Python script to compare Dump files---------
+print "jumping back to main script"
+jump in.base compareData

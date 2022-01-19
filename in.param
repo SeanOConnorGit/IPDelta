@@ -1,0 +1,13 @@
+label start
+
+variable tStep equal 1000 #Timesteps. Default: 1000. Must have tStep > pDamp and tStep > tDamp.
+variable dFile string lammps.dat #Structure data file to read.Default: lammps.dat
+variable sRate equal 100 #Sampling (dump/restart) rate. Default: 10.
+variable pot string adp #Potential style. Default: adp.
+variable cellX equal 1 #Supercell multiplier x-axis. Default 1.
+variable cellY equal 1 #Supercell multiplier y-axis. Default 1.
+variable cellZ equal 1 #Supercell multiplier z-axis. Default 1.
+variable tDamp equal 100*dt #temp damping. Default: 100. Don't remove *dt.
+variable pDamp equal 1000*dt #temp damping. Default: 1000. Don't remove *dt.
+
+jump in.base setup

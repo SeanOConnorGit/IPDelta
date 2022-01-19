@@ -1,0 +1,11 @@
+shell which python3
+#shell python3 eval.py arg1 arg2
+#shell cmp --help
+#variable arg1 string this
+#python compDump input 1 v_arg1 return v_ans format ss file eval.py
+
+variable dumpPath string ecoh1000/dump_files/
+variable postPath string ecoh1000/post_process/
+variable pot string adp #eam
+
+shell python3 eval.py ${dumpPath} ${postPath} ${pot}

@@ -1,0 +1,1033 @@
+LAMMPS (3 Mar 2020)
+#----------Define variables from in.param-------------
+
+jump in.param start
+
+variable tStep equal 1000 #Timesteps. Default: 1000. Must have tStep > pDamp and tStep > tDamp.
+variable dFile string lammps.dat #Structure data file to read.Default: lammps.dat
+variable sRate equal 1000 #Sampling (dump/restart) rate. Default: 10.
+variable pot string adp #Potential style. Default: adp.
+variable cellX equal 1 #Supercell multiplier x-axis. Default 1.
+variable cellY equal 1 #Supercell multiplier y-axis. Default 1.
+variable cellZ equal 1 #Supercell multiplier z-axis. Default 1.
+variable tDamp equal 100*dt #temp damping. Default: 100. Don't remove *dt.
+variable pDamp equal 1000*dt #temp damping. Default: 1000. Don't remove *dt.
+
+jump in.base setup
+
+if "${tStep} == 0" then "print 'Must specify number of timesteps.'"  quit  else "print 'tStep is ${tStep}'"
+print 'tStep is ${tStep}'
+tStep is 1000
+
+#----------- Set Up Directories -----------------------
+variable pathName string ${pot}${tStep}
+variable pathName string adp${tStep}
+variable pathName string adp1000
+print "creating ${pathName} and subfolders..."
+creating adp1000 and subfolders...
+shell mkdir ${pathName}
+shell mkdir adp1000
+WARNING: Shell command 'mkdir' failed with error 'File exists' (src/input.cpp:1292)
+shell mkdir ${pathName}/log_files
+shell mkdir adp1000/log_files
+WARNING: Shell command 'mkdir' failed with error 'File exists' (src/input.cpp:1292)
+shell mkdir ${pathName}/restart_files
+shell mkdir adp1000/restart_files
+WARNING: Shell command 'mkdir' failed with error 'File exists' (src/input.cpp:1292)
+shell mkdir ${pathName}/dump_files
+shell mkdir adp1000/dump_files
+WARNING: Shell command 'mkdir' failed with error 'File exists' (src/input.cpp:1292)
+shell mkdir ${pathName}/post_process
+shell mkdir adp1000/post_process
+WARNING: Shell command 'mkdir' failed with error 'File exists' (src/input.cpp:1292)
+
+#------------Copy log file to correct directory---------
+print "Log file located in ${pathName}/log_files/log.lammps."
+Log file located in adp1000/log_files/log.lammps.
+shell mv log.lammps ${pathName}/log_files/log.lammps
+shell mv log.lammps adp1000/log_files/log.lammps
+log ${pathName}/log_files/log.lammps append
+log adp1000/log_files/log.lammps append
+
+# ---------- Initialize Simulation ---------------------
+clear
+units metal
+dimension 3
+boundary p p p
+atom_style atomic
+atom_modify map array
+neighbor 2.0 bin
+neigh_modify every 1 delay 0 check yes
+
+# ---------- Create Atoms ------------------------------
+#variable dataFile string lammps.dat
+read_data ${dFile}
+read_data lammps.dat
+  orthogonal box = (0 0 0) to (8.85 15.3286 14.058)
+  1 by 1 by 1 MPI processor grid
+  reading atoms ...
+  108 atoms
+  read_data CPU = 0.00159279 secs
+replicate ${cellX} ${cellY} ${cellZ}
+replicate 1 ${cellY} ${cellZ}
+replicate 1 1 ${cellZ}
+replicate 1 1 1
+  orthogonal box = (0 0 0) to (8.85 15.3286 14.058)
+  1 by 1 by 1 MPI processor grid
+  108 atoms
+  replicate CPU = 0.000510003 secs
+
+variable atomMult equal ${cellX}*${cellY}*${cellZ}
+variable atomMult equal 1*${cellY}*${cellZ}
+variable atomMult equal 1*1*${cellZ}
+variable atomMult equal 1*1*1
+
+# ---------- Define Interatomic Potential --------------
+pair_style eam/fs
+pair_coeff * * Ti2.eam.fs Ti
+
+# ---------- Define Settings ---------------------------
+compute apE all pe/atom
+compute eatoms all reduce sum c_apE
+variable nRuns loop 100 #increment with each command that runs for tSteps. nRuns starts at 1, so skip first run cmd.
+
+# ---------- Run Minimization --------------------------
+reset_timestep 0
+thermo ${sRate}
+thermo 1000
+thermo_style custom step pe lx ly lz press pxx pyy pzz c_eatoms
+
+min_style sd
+minimize 1e-16 1e-16 10000 10000
+Neighbor list info ...
+  update every 1 steps, delay 0 steps, check yes
+  max neighbors/atom: 2000, page size: 100000
+  master list distance cutoff = 8.9
+  ghost atom cutoff = 8.9
+  binsize = 4.45, bins = 2 4 4
+  1 neighbor lists, perpetual/occasional/extra = 1 0 0
+  (1) pair eam/fs, perpetual
+      attributes: half, newton on
+      pair build: half/bin/atomonly/newton
+      stencil: half/bin/3d/newton
+      bin: standard
+Per MPI rank memory allocation (min/avg/max) = 4.643 | 4.643 | 4.643 Mbytes
+Step PotEng Lx Ly Lz Press Pxx Pyy Pzz c_eatoms 
+       0   -566.61698         8.85    15.328649       14.058    1906.1887    964.06549    964.11287    3790.3877   -566.61698 
+      34   -566.61698         8.85    15.328649       14.058    1906.1887    964.06995    964.10842    3790.3877   -566.61698 
+Loop time of 0.0130279 on 1 procs for 34 steps with 108 atoms
+
+100.0% CPU use with 1 MPI tasks x no OpenMP threads
+
+Minimization stats:
+  Stopping criterion = energy tolerance
+  Energy initial, next-to-last, final = 
+        -566.616981001     -566.616981001     -566.616981001
+  Force two-norm initial, final = 4.84296e-06 2.43261e-13
+  Force max component initial, final = 6.02155e-07 3.87329e-14
+  Final line search alpha, max atom move = 1 3.87329e-14
+  Iterations, force evaluations = 34 68
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 0.012523   | 0.012523   | 0.012523   |   0.0 | 96.13
+Neigh   | 0          | 0          | 0          |   0.0 |  0.00
+Comm    | 0.00030846 | 0.00030846 | 0.00030846 |   0.0 |  2.37
+Output  | 0          | 0          | 0          |   0.0 |  0.00
+Modify  | 0          | 0          | 0          |   0.0 |  0.00
+Other   |            | 0.0001962  |            |       |  1.51
+
+Nlocal:    108 ave 108 max 108 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Nghost:    1628 ave 1628 max 1628 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Neighs:    8532 ave 8532 max 8532 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+
+Total # of neighbors = 8532
+Ave neighs/atom = 79
+Neighbor list builds = 0
+Dangerous builds = 0
+
+#-------Writing Dumps/Restarts--------------------------
+reset_timestep 0
+
+if "${pot} == adp" then  "dump difDump all custom ${sRate} ${pathName}/dump_files/difDump.txt id x y z vx vy vz #fx fy fz c_apE" "dump_modify difDump sort id #pbc yes"
+dump difDump all custom ${sRate} ${pathName}/dump_files/difDump.txt id x y z vx vy vz #fx fy fz c_apE
+dump difDump all custom 1000 ${pathName}/dump_files/difDump.txt id x y z vx vy vz 
+dump difDump all custom 1000 adp1000/dump_files/difDump.txt id x y z vx vy vz 
+dump_modify difDump sort id #pbc yes
+
+dump refDump all custom ${sRate} ${pathName}/dump_files/refDump.txt id x y z vx vy vz fx fy fz c_apE
+dump refDump all custom 1000 ${pathName}/dump_files/refDump.txt id x y z vx vy vz fx fy fz c_apE
+dump refDump all custom 1000 adp1000/dump_files/refDump.txt id x y z vx vy vz fx fy fz c_apE
+dump_modify refDump sort id #pbc yes
+
+restart ${sRate} ${pathName}/restart_files/ref.restart.*
+restart 1000 ${pathName}/restart_files/ref.restart.*
+restart 1000 adp1000/restart_files/ref.restart.*
+
+velocity all create 300.0 8675309 rot yes dist gaussian
+
+write_restart ${pathName}/restart_files/ref.restart.0
+write_restart adp1000/restart_files/ref.restart.0
+#--------------------------------------------------------
+#initial mixing
+fix 1 all nvt temp 500 500 ${tDamp}
+fix 1 all nvt temp 500 500 0.1
+run ${tStep}
+run 1000
+Per MPI rank memory allocation (min/avg/max) = 6.175 | 6.175 | 6.175 Mbytes
+Step PotEng Lx Ly Lz Press Pxx Pyy Pzz c_eatoms 
+       0   -566.61698         8.85    15.328649       14.058    4230.0921    3313.3676    3344.0353    6032.8735   -566.61698 
+    1000   -560.43766         8.85    15.328649       14.058    12868.204    14024.108    11343.134     13237.37   -560.43766 
+Loop time of 0.242829 on 1 procs for 1000 steps with 108 atoms
+
+Performance: 355.807 ns/day, 0.067 hours/ns, 4118.131 timesteps/s
+100.0% CPU use with 1 MPI tasks x no OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 0.23249    | 0.23249    | 0.23249    |   0.0 | 95.74
+Neigh   | 0.00020786 | 0.00020786 | 0.00020786 |   0.0 |  0.09
+Comm    | 0.0052747  | 0.0052747  | 0.0052747  |   0.0 |  2.17
+Output  | 0.0010779  | 0.0010779  | 0.0010779  |   0.0 |  0.44
+Modify  | 0.002469   | 0.002469   | 0.002469   |   0.0 |  1.02
+Other   |            | 0.001306   |            |       |  0.54
+
+Nlocal:    108 ave 108 max 108 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Nghost:    1570 ave 1570 max 1570 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Neighs:    8443 ave 8443 max 8443 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+
+Total # of neighbors = 8443
+Ave neighs/atom = 78.1759
+Neighbor list builds = 1
+Dangerous builds = 0
+unfix 1
+#nRuns starts at 1 so don't increment this time.
+
+fix 1 all npt temp 500 500 ${tDamp} iso 0 0 ${pDamp}
+fix 1 all npt temp 500 500 0.1 iso 0 0 ${pDamp}
+fix 1 all npt temp 500 500 0.1 iso 0 0 1
+run ${tStep}
+run 1000
+Per MPI rank memory allocation (min/avg/max) = 6.175 | 6.175 | 6.175 Mbytes
+Step PotEng Lx Ly Lz Press Pxx Pyy Pzz c_eatoms 
+    1000   -560.43766         8.85    15.328649       14.058    12868.204    14024.108    11343.134     13237.37   -560.43766 
+    2000   -558.81215    8.8737434    15.369774    14.095716    10775.678    11544.968    9049.6371     11732.43   -558.81215 
+Loop time of 0.245599 on 1 procs for 1000 steps with 108 atoms
+
+Performance: 351.792 ns/day, 0.068 hours/ns, 4071.671 timesteps/s
+100.0% CPU use with 1 MPI tasks x no OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 0.23371    | 0.23371    | 0.23371    |   0.0 | 95.16
+Neigh   | 0.00016271 | 0.00016271 | 0.00016271 |   0.0 |  0.07
+Comm    | 0.004762   | 0.004762   | 0.004762   |   0.0 |  1.94
+Output  | 0.00083754 | 0.00083754 | 0.00083754 |   0.0 |  0.34
+Modify  | 0.0048778  | 0.0048778  | 0.0048778  |   0.0 |  1.99
+Other   |            | 0.001254   |            |       |  0.51
+
+Nlocal:    108 ave 108 max 108 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Nghost:    1543 ave 1543 max 1543 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Neighs:    8410 ave 8410 max 8410 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+
+Total # of neighbors = 8410
+Ave neighs/atom = 77.8704
+Neighbor list builds = 1
+Dangerous builds = 0
+unfix 1
+next nRuns
+
+#cooling
+fix 1 all npt temp 500 300 ${tDamp} iso 0 0 ${pDamp}
+fix 1 all npt temp 500 300 0.1 iso 0 0 ${pDamp}
+fix 1 all npt temp 500 300 0.1 iso 0 0 1
+run ${tStep}
+run 1000
+Per MPI rank memory allocation (min/avg/max) = 6.175 | 6.175 | 6.175 Mbytes
+Step PotEng Lx Ly Lz Press Pxx Pyy Pzz c_eatoms 
+    2000   -558.81215    8.8737434    15.369774    14.095716    10775.678    11544.968    9049.6371     11732.43   -558.81215 
+    3000   -562.27283    8.8616145    15.348766    14.076449    5374.3156    7940.1337    2322.3537    5860.4596   -562.27283 
+Loop time of 0.232267 on 1 procs for 1000 steps with 108 atoms
+
+Performance: 371.986 ns/day, 0.065 hours/ns, 4305.388 timesteps/s
+100.0% CPU use with 1 MPI tasks x no OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 0.22083    | 0.22083    | 0.22083    |   0.0 | 95.08
+Neigh   | 0.00020549 | 0.00020549 | 0.00020549 |   0.0 |  0.09
+Comm    | 0.0042782  | 0.0042782  | 0.0042782  |   0.0 |  1.84
+Output  | 0.0010246  | 0.0010246  | 0.0010246  |   0.0 |  0.44
+Modify  | 0.0047399  | 0.0047399  | 0.0047399  |   0.0 |  2.04
+Other   |            | 0.00119    |            |       |  0.51
+
+Nlocal:    108 ave 108 max 108 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Nghost:    1555 ave 1555 max 1555 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Neighs:    8403 ave 8403 max 8403 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+
+Total # of neighbors = 8403
+Ave neighs/atom = 77.8056
+Neighbor list builds = 1
+Dangerous builds = 0
+unfix 1
+next nRuns
+
+#final relax
+fix 1 all npt temp 300 300 ${tDamp} iso 0 0 ${pDamp}
+fix 1 all npt temp 300 300 0.1 iso 0 0 ${pDamp}
+fix 1 all npt temp 300 300 0.1 iso 0 0 1
+run ${tStep}
+run 1000
+Per MPI rank memory allocation (min/avg/max) = 6.175 | 6.175 | 6.175 Mbytes
+Step PotEng Lx Ly Lz Press Pxx Pyy Pzz c_eatoms 
+    3000   -562.27283    8.8616145    15.348766    14.076449    5374.3156    7940.1337    2322.3537    5860.4596   -562.27283 
+    4000   -563.03662    8.8695528    15.362515    14.089059   -3008.3761   -4206.1094   -3043.9848   -1775.0342   -563.03662 
+Loop time of 0.228777 on 1 procs for 1000 steps with 108 atoms
+
+Performance: 377.661 ns/day, 0.064 hours/ns, 4371.073 timesteps/s
+100.0% CPU use with 1 MPI tasks x no OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 0.21775    | 0.21775    | 0.21775    |   0.0 | 95.18
+Neigh   | 0.00016375 | 0.00016375 | 0.00016375 |   0.0 |  0.07
+Comm    | 0.0042446  | 0.0042446  | 0.0042446  |   0.0 |  1.86
+Output  | 0.0008155  | 0.0008155  | 0.0008155  |   0.0 |  0.36
+Modify  | 0.004645   | 0.004645   | 0.004645   |   0.0 |  2.03
+Other   |            | 0.00116    |            |       |  0.51
+
+Nlocal:    108 ave 108 max 108 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Nghost:    1570 ave 1570 max 1570 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Neighs:    8367 ave 8367 max 8367 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+
+Total # of neighbors = 8367
+Ave neighs/atom = 77.4722
+Neighbor list builds = 1
+Dangerous builds = 0
+unfix 1
+next nRuns
+
+variable natoms equal "count(all)"
+variable teng equal "c_eatoms"
+variable length equal "lx"
+variable ecoh equal "v_teng/v_natoms"
+
+print "Total energy (eV) = ${teng};"
+Total energy (eV) = -563.036615901164;
+print "Number of atoms = ${natoms};"
+Number of atoms = 108;
+print "Lattice constant (Angstroms) = ${length};"
+Lattice constant (Angstroms) = 8.86955282158699;
+print "Cohesive energy (eV) = ${ecoh};"
+Cohesive energy (eV) = -5.21330199908485;
+
+#----------------Jump to potential script--------------
+print "Reference calculations complete. Ran ${nRuns} steps. Beginning ADP calculations."
+Reference calculations complete. Ran 4 steps. Beginning ADP calculations.
+
+jump in.pot
+#--Label cmd to access script from other scripts-----
+label startADP
+
+clear
+
+#Debug step. Checking tStep var migrated from in.eam
+print "Initial value of tStep is: ${tStep}."
+Initial value of tStep is: 1000.
+print "Initial value of pathName is: ${pathName}."
+Initial value of pathName is: adp1000.
+
+# ---------- Create Atoms ------------------------------
+#Lammps loop cmd starts from 1. Need to capture timestep 0 prior to starting loop.
+read_restart ${pathName}/restart_files/ref.restart.0
+read_restart adp1000/restart_files/ref.restart.0
+  restoring atom style atomic from restart
+  orthogonal box = (0 0 0) to (8.85 15.3286 14.058)
+  1 by 1 by 1 MPI processor grid
+  pair style eam/fs stores no restart info
+  108 atoms
+  read_restart CPU = 0.000199226 secs
+
+neighbor 2.0 bin
+neigh_modify every 1 delay 0 check yes
+
+# ---------- Define Interatomic Potential ---------------------
+if "${pot} == adp" then "pair_style adp"  "pair_coeff * * Ti.adp Ti" elif "${pot} == eam" "pair_style eam/fs"  "pair_coeff * * Ti2.eam.fs Ti" else "print 'Potential type not recognized.'" quit
+pair_style adp
+pair_coeff * * Ti.adp Ti
+
+compute apE all pe/atom
+
+if "${pot} == adp" then  "dump difDump0 all custom 1 ${pathName}/dump_files/${pot}difDump.txt id x y z vx vy vz #fx fy fz c_apE" "dump_modify difDump0 sort id" #pbc yes
+dump difDump0 all custom 1 ${pathName}/dump_files/${pot}difDump.txt id x y z vx vy vz #fx fy fz c_apE
+dump difDump0 all custom 1 adp1000/dump_files/${pot}difDump.txt id x y z vx vy vz 
+dump difDump0 all custom 1 adp1000/dump_files/adpdifDump.txt id x y z vx vy vz 
+dump_modify difDump0 sort id
+
+dump Dump0 all custom 1 ${pathName}/dump_files/${pot}Dump.txt id x y z vx vy vz fx fy fz c_apE
+dump Dump0 all custom 1 adp1000/dump_files/${pot}Dump.txt id x y z vx vy vz fx fy fz c_apE
+dump Dump0 all custom 1 adp1000/dump_files/adpDump.txt id x y z vx vy vz fx fy fz c_apE
+dump_modify Dump0 sort id #pbc yes
+
+run 0
+WARNING: No fixes defined, atoms won't move (src/verlet.cpp:52)
+Neighbor list info ...
+  update every 1 steps, delay 0 steps, check yes
+  max neighbors/atom: 2000, page size: 100000
+  master list distance cutoff = 7.5
+  ghost atom cutoff = 7.5
+  binsize = 3.75, bins = 3 5 4
+  1 neighbor lists, perpetual/occasional/extra = 1 0 0
+  (1) pair adp, perpetual
+      attributes: half, newton on
+      pair build: half/bin/atomonly/newton
+      stencil: half/bin/3d/newton
+      bin: standard
+Per MPI rank memory allocation (min/avg/max) = 8.539 | 8.539 | 8.539 Mbytes
+Step Temp E_pair E_mol TotEng Press 
+       0          300   -536.45865            0    -532.3094    222794.18 
+Loop time of 5.51e-07 on 1 procs for 0 steps with 108 atoms
+
+181.5% CPU use with 1 MPI tasks x no OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 0          | 0          | 0          |   0.0 |  0.00
+Neigh   | 0          | 0          | 0          |   0.0 |  0.00
+Comm    | 0          | 0          | 0          |   0.0 |  0.00
+Output  | 0          | 0          | 0          |   0.0 |  0.00
+Modify  | 0          | 0          | 0          |   0.0 |  0.00
+Other   |            | 5.51e-07   |            |       |100.00
+
+Nlocal:    108 ave 108 max 108 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Nghost:    1116 ave 1116 max 1116 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Neighs:    4968 ave 4968 max 4968 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+
+Total # of neighbors = 4968
+Ave neighs/atom = 46
+Neighbor list builds = 0
+Dangerous builds = 0
+
+clear
+
+#Begin loop
+#--------------------------------------------------
+label       loop
+
+variable    loopEnd equal (${tStep}/${sRate})*${nRuns}
+variable    loopEnd equal (1000/${sRate})*${nRuns}
+variable    loopEnd equal (1000/1000)*${nRuns}
+variable    loopEnd equal (1000/1000)*4
+variable    loopExit equal ${tStep}*${nRuns}
+variable    loopExit equal 1000*${nRuns}
+variable    loopExit equal 1000*4
+variable    a loop ${loopEnd}
+variable    a loop 4
+
+variable    aScaled equal $a*${sRate}
+variable    aScaled equal 1*${sRate}
+variable    aScaled equal 1*1000
+
+print       "timestep = ${aScaled}"
+timestep = 1000
+if          "${aScaled} > ${loopExit}" then "jump SELF break"
+
+# ---------- Create Atoms ------------------------------
+read_restart ${pathName}/restart_files/ref.restart.${aScaled}
+read_restart adp1000/restart_files/ref.restart.${aScaled}
+read_restart adp1000/restart_files/ref.restart.1000
+  restoring atom style atomic from restart
+  orthogonal box = (0 0 0) to (8.85 15.3286 14.058)
+  1 by 1 by 1 MPI processor grid
+  pair style eam/fs stores no restart info
+  108 atoms
+  read_restart CPU = 0.000102706 secs
+
+print "Reading from restart file ref.restart.${aScaled}"
+Reading from restart file ref.restart.1000
+
+neighbor 2.0 bin
+neigh_modify every 1 delay 0 check yes
+
+# ---------- Define Interatomic Potential ---------------------
+if "${pot} == adp" then "pair_style adp"  "pair_coeff * * Ti.adp Ti" elif "${pot} == eam" "pair_style eam/fs"  "pair_coeff * * Ti2.eam.fs Ti" else "print 'Potential type not recognized.'" quit
+pair_style adp
+pair_coeff * * Ti.adp Ti
+
+compute apE all pe/atom
+
+#Create additional dump file containing only pos/vel data only if using adp potential
+if "${pot} == adp" then  "dump difDumploop all custom 1 ${pathName}/dump_files/${pot}difDumploop.${aScaled}.txt id x y z vx vy vz #fx fy fz c_apE" "dump_modify difDumploop sort id" #pbc yes
+dump difDumploop all custom 1 ${pathName}/dump_files/${pot}difDumploop.${aScaled}.txt id x y z vx vy vz #fx fy fz c_apE
+dump difDumploop all custom 1 adp1000/dump_files/${pot}difDumploop.${aScaled}.txt id x y z vx vy vz 
+dump difDumploop all custom 1 adp1000/dump_files/adpdifDumploop.${aScaled}.txt id x y z vx vy vz 
+dump difDumploop all custom 1 adp1000/dump_files/adpdifDumploop.1000.txt id x y z vx vy vz 
+dump_modify difDumploop sort id
+
+dump Dumploop all custom 1 ${pathName}/dump_files/${pot}Dumploop.${aScaled}.txt id x y z vx vy vz fx fy fz c_apE
+dump Dumploop all custom 1 adp1000/dump_files/${pot}Dumploop.${aScaled}.txt id x y z vx vy vz fx fy fz c_apE
+dump Dumploop all custom 1 adp1000/dump_files/adpDumploop.${aScaled}.txt id x y z vx vy vz fx fy fz c_apE
+dump Dumploop all custom 1 adp1000/dump_files/adpDumploop.1000.txt id x y z vx vy vz fx fy fz c_apE
+dump_modify Dumploop sort id #pbc yes
+
+run 0
+WARNING: No fixes defined, atoms won't move (src/verlet.cpp:52)
+Unused restart file global fix info:
+  fix style: nvt, fix ID: 1
+Neighbor list info ...
+  update every 1 steps, delay 0 steps, check yes
+  max neighbors/atom: 2000, page size: 100000
+  master list distance cutoff = 7.5
+  ghost atom cutoff = 7.5
+  binsize = 3.75, bins = 3 5 4
+  1 neighbor lists, perpetual/occasional/extra = 1 0 0
+  (1) pair adp, perpetual
+      attributes: half, newton on
+      pair build: half/bin/atomonly/newton
+      stencil: half/bin/3d/newton
+      bin: standard
+Per MPI rank memory allocation (min/avg/max) = 8.539 | 8.539 | 8.539 Mbytes
+Step Temp E_pair E_mol TotEng Press 
+    1000    465.84343   -550.25831            0    -543.8153    302384.51 
+Loop time of 5.16e-07 on 1 procs for 0 steps with 108 atoms
+
+193.8% CPU use with 1 MPI tasks x no OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 0          | 0          | 0          |   0.0 |  0.00
+Neigh   | 0          | 0          | 0          |   0.0 |  0.00
+Comm    | 0          | 0          | 0          |   0.0 |  0.00
+Output  | 0          | 0          | 0          |   0.0 |  0.00
+Modify  | 0          | 0          | 0          |   0.0 |  0.00
+Other   |            | 5.16e-07   |            |       |100.00
+
+Nlocal:    108 ave 108 max 108 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Nghost:    1104 ave 1104 max 1104 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Neighs:    5246 ave 5246 max 5246 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+
+Total # of neighbors = 5246
+Ave neighs/atom = 48.5741
+Neighbor list builds = 0
+Dangerous builds = 0
+
+#append adpDump.txt with current snapshot of adpDumploop.txt
+shell cat ${pathName}/dump_files/${pot}Dumploop.${aScaled}.txt >> ${pathName}/dump_files/${pot}Dump.txt
+shell cat adp1000/dump_files/${pot}Dumploop.${aScaled}.txt >> ${pathName}/dump_files/${pot}Dump.txt
+shell cat adp1000/dump_files/adpDumploop.${aScaled}.txt >> ${pathName}/dump_files/${pot}Dump.txt
+shell cat adp1000/dump_files/adpDumploop.1000.txt >> ${pathName}/dump_files/${pot}Dump.txt
+shell cat adp1000/dump_files/adpDumploop.1000.txt >> adp1000/dump_files/${pot}Dump.txt
+shell cat adp1000/dump_files/adpDumploop.1000.txt >> adp1000/dump_files/adpDump.txt
+
+if "${pot} == adp" then  "shell cat ${pathName}/dump_files/${pot}difDumploop.${aScaled}.txt >> ${pathName}/dump_files/${pot}difDump.txt"
+shell cat ${pathName}/dump_files/${pot}difDumploop.${aScaled}.txt >> ${pathName}/dump_files/${pot}difDump.txt
+shell cat adp1000/dump_files/${pot}difDumploop.${aScaled}.txt >> ${pathName}/dump_files/${pot}difDump.txt
+shell cat adp1000/dump_files/adpdifDumploop.${aScaled}.txt >> ${pathName}/dump_files/${pot}difDump.txt
+shell cat adp1000/dump_files/adpdifDumploop.1000.txt >> ${pathName}/dump_files/${pot}difDump.txt
+shell cat adp1000/dump_files/adpdifDumploop.1000.txt >> adp1000/dump_files/${pot}difDump.txt
+shell cat adp1000/dump_files/adpdifDumploop.1000.txt >> adp1000/dump_files/adpdifDump.txt
+
+#delete intermediate adp dump file
+shell rm ${pathName}/dump_files/${pot}Dumploop.${aScaled}.txt
+shell rm adp1000/dump_files/${pot}Dumploop.${aScaled}.txt
+shell rm adp1000/dump_files/adpDumploop.${aScaled}.txt
+shell rm adp1000/dump_files/adpDumploop.1000.txt
+
+if "${pot} == adp" then  "shell rm ${pathName}/dump_files/${pot}difDumploop.${aScaled}.txt"
+shell rm ${pathName}/dump_files/${pot}difDumploop.${aScaled}.txt
+shell rm adp1000/dump_files/${pot}difDumploop.${aScaled}.txt
+shell rm adp1000/dump_files/adpdifDumploop.${aScaled}.txt
+shell rm adp1000/dump_files/adpdifDumploop.1000.txt
+
+clear
+
+next        a
+jump        SELF loop
+
+variable    loopEnd equal (${tStep}/${sRate})*${nRuns}
+variable    loopEnd equal (1000/${sRate})*${nRuns}
+variable    loopEnd equal (1000/1000)*${nRuns}
+variable    loopEnd equal (1000/1000)*4
+variable    loopExit equal ${tStep}*${nRuns}
+variable    loopExit equal 1000*${nRuns}
+variable    loopExit equal 1000*4
+variable    a loop ${loopEnd}
+variable    a loop 4
+
+variable    aScaled equal $a*${sRate}
+variable    aScaled equal 2*${sRate}
+variable    aScaled equal 2*1000
+
+print       "timestep = ${aScaled}"
+timestep = 2000
+if          "${aScaled} > ${loopExit}" then "jump SELF break"
+
+# ---------- Create Atoms ------------------------------
+read_restart ${pathName}/restart_files/ref.restart.${aScaled}
+read_restart adp1000/restart_files/ref.restart.${aScaled}
+read_restart adp1000/restart_files/ref.restart.2000
+  restoring atom style atomic from restart
+  orthogonal box = (-0.0118717 -0.0205624 -0.0188579) to (8.86187 15.3492 14.0769)
+  1 by 1 by 1 MPI processor grid
+  pair style eam/fs stores no restart info
+  108 atoms
+  read_restart CPU = 9.1782e-05 secs
+
+print "Reading from restart file ref.restart.${aScaled}"
+Reading from restart file ref.restart.2000
+
+neighbor 2.0 bin
+neigh_modify every 1 delay 0 check yes
+
+# ---------- Define Interatomic Potential ---------------------
+if "${pot} == adp" then "pair_style adp"  "pair_coeff * * Ti.adp Ti" elif "${pot} == eam" "pair_style eam/fs"  "pair_coeff * * Ti2.eam.fs Ti" else "print 'Potential type not recognized.'" quit
+pair_style adp
+pair_coeff * * Ti.adp Ti
+
+compute apE all pe/atom
+
+#Create additional dump file containing only pos/vel data only if using adp potential
+if "${pot} == adp" then  "dump difDumploop all custom 1 ${pathName}/dump_files/${pot}difDumploop.${aScaled}.txt id x y z vx vy vz #fx fy fz c_apE" "dump_modify difDumploop sort id" #pbc yes
+dump difDumploop all custom 1 ${pathName}/dump_files/${pot}difDumploop.${aScaled}.txt id x y z vx vy vz #fx fy fz c_apE
+dump difDumploop all custom 1 adp1000/dump_files/${pot}difDumploop.${aScaled}.txt id x y z vx vy vz 
+dump difDumploop all custom 1 adp1000/dump_files/adpdifDumploop.${aScaled}.txt id x y z vx vy vz 
+dump difDumploop all custom 1 adp1000/dump_files/adpdifDumploop.2000.txt id x y z vx vy vz 
+dump_modify difDumploop sort id
+
+dump Dumploop all custom 1 ${pathName}/dump_files/${pot}Dumploop.${aScaled}.txt id x y z vx vy vz fx fy fz c_apE
+dump Dumploop all custom 1 adp1000/dump_files/${pot}Dumploop.${aScaled}.txt id x y z vx vy vz fx fy fz c_apE
+dump Dumploop all custom 1 adp1000/dump_files/adpDumploop.${aScaled}.txt id x y z vx vy vz fx fy fz c_apE
+dump Dumploop all custom 1 adp1000/dump_files/adpDumploop.2000.txt id x y z vx vy vz fx fy fz c_apE
+dump_modify Dumploop sort id #pbc yes
+
+run 0
+WARNING: No fixes defined, atoms won't move (src/verlet.cpp:52)
+Unused restart file global fix info:
+  fix style: npt, fix ID: 1
+Neighbor list info ...
+  update every 1 steps, delay 0 steps, check yes
+  max neighbors/atom: 2000, page size: 100000
+  master list distance cutoff = 7.5
+  ghost atom cutoff = 7.5
+  binsize = 3.75, bins = 3 5 4
+  1 neighbor lists, perpetual/occasional/extra = 1 0 0
+  (1) pair adp, perpetual
+      attributes: half, newton on
+      pair build: half/bin/atomonly/newton
+      stencil: half/bin/3d/newton
+      bin: standard
+Per MPI rank memory allocation (min/avg/max) = 8.538 | 8.538 | 8.538 Mbytes
+Step Temp E_pair E_mol TotEng Press 
+    2000    463.32834   -548.54973            0   -542.14151     293688.9 
+Loop time of 5.01e-07 on 1 procs for 0 steps with 108 atoms
+
+199.6% CPU use with 1 MPI tasks x no OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 0          | 0          | 0          |   0.0 |  0.00
+Neigh   | 0          | 0          | 0          |   0.0 |  0.00
+Comm    | 0          | 0          | 0          |   0.0 |  0.00
+Output  | 0          | 0          | 0          |   0.0 |  0.00
+Modify  | 0          | 0          | 0          |   0.0 |  0.00
+Other   |            | 5.01e-07   |            |       |100.00
+
+Nlocal:    108 ave 108 max 108 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Nghost:    1096 ave 1096 max 1096 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Neighs:    5199 ave 5199 max 5199 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+
+Total # of neighbors = 5199
+Ave neighs/atom = 48.1389
+Neighbor list builds = 0
+Dangerous builds = 0
+
+#append adpDump.txt with current snapshot of adpDumploop.txt
+shell cat ${pathName}/dump_files/${pot}Dumploop.${aScaled}.txt >> ${pathName}/dump_files/${pot}Dump.txt
+shell cat adp1000/dump_files/${pot}Dumploop.${aScaled}.txt >> ${pathName}/dump_files/${pot}Dump.txt
+shell cat adp1000/dump_files/adpDumploop.${aScaled}.txt >> ${pathName}/dump_files/${pot}Dump.txt
+shell cat adp1000/dump_files/adpDumploop.2000.txt >> ${pathName}/dump_files/${pot}Dump.txt
+shell cat adp1000/dump_files/adpDumploop.2000.txt >> adp1000/dump_files/${pot}Dump.txt
+shell cat adp1000/dump_files/adpDumploop.2000.txt >> adp1000/dump_files/adpDump.txt
+
+if "${pot} == adp" then  "shell cat ${pathName}/dump_files/${pot}difDumploop.${aScaled}.txt >> ${pathName}/dump_files/${pot}difDump.txt"
+shell cat ${pathName}/dump_files/${pot}difDumploop.${aScaled}.txt >> ${pathName}/dump_files/${pot}difDump.txt
+shell cat adp1000/dump_files/${pot}difDumploop.${aScaled}.txt >> ${pathName}/dump_files/${pot}difDump.txt
+shell cat adp1000/dump_files/adpdifDumploop.${aScaled}.txt >> ${pathName}/dump_files/${pot}difDump.txt
+shell cat adp1000/dump_files/adpdifDumploop.2000.txt >> ${pathName}/dump_files/${pot}difDump.txt
+shell cat adp1000/dump_files/adpdifDumploop.2000.txt >> adp1000/dump_files/${pot}difDump.txt
+shell cat adp1000/dump_files/adpdifDumploop.2000.txt >> adp1000/dump_files/adpdifDump.txt
+
+#delete intermediate adp dump file
+shell rm ${pathName}/dump_files/${pot}Dumploop.${aScaled}.txt
+shell rm adp1000/dump_files/${pot}Dumploop.${aScaled}.txt
+shell rm adp1000/dump_files/adpDumploop.${aScaled}.txt
+shell rm adp1000/dump_files/adpDumploop.2000.txt
+
+if "${pot} == adp" then  "shell rm ${pathName}/dump_files/${pot}difDumploop.${aScaled}.txt"
+shell rm ${pathName}/dump_files/${pot}difDumploop.${aScaled}.txt
+shell rm adp1000/dump_files/${pot}difDumploop.${aScaled}.txt
+shell rm adp1000/dump_files/adpdifDumploop.${aScaled}.txt
+shell rm adp1000/dump_files/adpdifDumploop.2000.txt
+
+clear
+
+next        a
+jump        SELF loop
+
+variable    loopEnd equal (${tStep}/${sRate})*${nRuns}
+variable    loopEnd equal (1000/${sRate})*${nRuns}
+variable    loopEnd equal (1000/1000)*${nRuns}
+variable    loopEnd equal (1000/1000)*4
+variable    loopExit equal ${tStep}*${nRuns}
+variable    loopExit equal 1000*${nRuns}
+variable    loopExit equal 1000*4
+variable    a loop ${loopEnd}
+variable    a loop 4
+
+variable    aScaled equal $a*${sRate}
+variable    aScaled equal 3*${sRate}
+variable    aScaled equal 3*1000
+
+print       "timestep = ${aScaled}"
+timestep = 3000
+if          "${aScaled} > ${loopExit}" then "jump SELF break"
+
+# ---------- Create Atoms ------------------------------
+read_restart ${pathName}/restart_files/ref.restart.${aScaled}
+read_restart adp1000/restart_files/ref.restart.${aScaled}
+read_restart adp1000/restart_files/ref.restart.3000
+  restoring atom style atomic from restart
+  orthogonal box = (-0.00580726 -0.0100585 -0.00922469) to (8.85581 15.3387 14.0672)
+  1 by 1 by 1 MPI processor grid
+  pair style eam/fs stores no restart info
+  108 atoms
+  read_restart CPU = 0.000135656 secs
+
+print "Reading from restart file ref.restart.${aScaled}"
+Reading from restart file ref.restart.3000
+
+neighbor 2.0 bin
+neigh_modify every 1 delay 0 check yes
+
+# ---------- Define Interatomic Potential ---------------------
+if "${pot} == adp" then "pair_style adp"  "pair_coeff * * Ti.adp Ti" elif "${pot} == eam" "pair_style eam/fs"  "pair_coeff * * Ti2.eam.fs Ti" else "print 'Potential type not recognized.'" quit
+pair_style adp
+pair_coeff * * Ti.adp Ti
+
+compute apE all pe/atom
+
+#Create additional dump file containing only pos/vel data only if using adp potential
+if "${pot} == adp" then  "dump difDumploop all custom 1 ${pathName}/dump_files/${pot}difDumploop.${aScaled}.txt id x y z vx vy vz #fx fy fz c_apE" "dump_modify difDumploop sort id" #pbc yes
+dump difDumploop all custom 1 ${pathName}/dump_files/${pot}difDumploop.${aScaled}.txt id x y z vx vy vz #fx fy fz c_apE
+dump difDumploop all custom 1 adp1000/dump_files/${pot}difDumploop.${aScaled}.txt id x y z vx vy vz 
+dump difDumploop all custom 1 adp1000/dump_files/adpdifDumploop.${aScaled}.txt id x y z vx vy vz 
+dump difDumploop all custom 1 adp1000/dump_files/adpdifDumploop.3000.txt id x y z vx vy vz 
+dump_modify difDumploop sort id
+
+dump Dumploop all custom 1 ${pathName}/dump_files/${pot}Dumploop.${aScaled}.txt id x y z vx vy vz fx fy fz c_apE
+dump Dumploop all custom 1 adp1000/dump_files/${pot}Dumploop.${aScaled}.txt id x y z vx vy vz fx fy fz c_apE
+dump Dumploop all custom 1 adp1000/dump_files/adpDumploop.${aScaled}.txt id x y z vx vy vz fx fy fz c_apE
+dump Dumploop all custom 1 adp1000/dump_files/adpDumploop.3000.txt id x y z vx vy vz fx fy fz c_apE
+dump_modify Dumploop sort id #pbc yes
+
+run 0
+WARNING: No fixes defined, atoms won't move (src/verlet.cpp:52)
+Unused restart file global fix info:
+  fix style: npt, fix ID: 1
+Neighbor list info ...
+  update every 1 steps, delay 0 steps, check yes
+  max neighbors/atom: 2000, page size: 100000
+  master list distance cutoff = 7.5
+  ghost atom cutoff = 7.5
+  binsize = 3.75, bins = 3 5 4
+  1 neighbor lists, perpetual/occasional/extra = 1 0 0
+  (1) pair adp, perpetual
+      attributes: half, newton on
+      pair build: half/bin/atomonly/newton
+      stencil: half/bin/3d/newton
+      bin: standard
+Per MPI rank memory allocation (min/avg/max) = 8.538 | 8.538 | 8.538 Mbytes
+Step Temp E_pair E_mol TotEng Press 
+    3000    316.95523   -551.49264            0   -547.10889     278786.6 
+Loop time of 5.17e-07 on 1 procs for 0 steps with 108 atoms
+
+193.4% CPU use with 1 MPI tasks x no OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 0          | 0          | 0          |   0.0 |  0.00
+Neigh   | 0          | 0          | 0          |   0.0 |  0.00
+Comm    | 0          | 0          | 0          |   0.0 |  0.00
+Output  | 0          | 0          | 0          |   0.0 |  0.00
+Modify  | 0          | 0          | 0          |   0.0 |  0.00
+Other   |            | 5.17e-07   |            |       |100.00
+
+Nlocal:    108 ave 108 max 108 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Nghost:    1104 ave 1104 max 1104 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Neighs:    5190 ave 5190 max 5190 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+
+Total # of neighbors = 5190
+Ave neighs/atom = 48.0556
+Neighbor list builds = 0
+Dangerous builds = 0
+
+#append adpDump.txt with current snapshot of adpDumploop.txt
+shell cat ${pathName}/dump_files/${pot}Dumploop.${aScaled}.txt >> ${pathName}/dump_files/${pot}Dump.txt
+shell cat adp1000/dump_files/${pot}Dumploop.${aScaled}.txt >> ${pathName}/dump_files/${pot}Dump.txt
+shell cat adp1000/dump_files/adpDumploop.${aScaled}.txt >> ${pathName}/dump_files/${pot}Dump.txt
+shell cat adp1000/dump_files/adpDumploop.3000.txt >> ${pathName}/dump_files/${pot}Dump.txt
+shell cat adp1000/dump_files/adpDumploop.3000.txt >> adp1000/dump_files/${pot}Dump.txt
+shell cat adp1000/dump_files/adpDumploop.3000.txt >> adp1000/dump_files/adpDump.txt
+
+if "${pot} == adp" then  "shell cat ${pathName}/dump_files/${pot}difDumploop.${aScaled}.txt >> ${pathName}/dump_files/${pot}difDump.txt"
+shell cat ${pathName}/dump_files/${pot}difDumploop.${aScaled}.txt >> ${pathName}/dump_files/${pot}difDump.txt
+shell cat adp1000/dump_files/${pot}difDumploop.${aScaled}.txt >> ${pathName}/dump_files/${pot}difDump.txt
+shell cat adp1000/dump_files/adpdifDumploop.${aScaled}.txt >> ${pathName}/dump_files/${pot}difDump.txt
+shell cat adp1000/dump_files/adpdifDumploop.3000.txt >> ${pathName}/dump_files/${pot}difDump.txt
+shell cat adp1000/dump_files/adpdifDumploop.3000.txt >> adp1000/dump_files/${pot}difDump.txt
+shell cat adp1000/dump_files/adpdifDumploop.3000.txt >> adp1000/dump_files/adpdifDump.txt
+
+#delete intermediate adp dump file
+shell rm ${pathName}/dump_files/${pot}Dumploop.${aScaled}.txt
+shell rm adp1000/dump_files/${pot}Dumploop.${aScaled}.txt
+shell rm adp1000/dump_files/adpDumploop.${aScaled}.txt
+shell rm adp1000/dump_files/adpDumploop.3000.txt
+
+if "${pot} == adp" then  "shell rm ${pathName}/dump_files/${pot}difDumploop.${aScaled}.txt"
+shell rm ${pathName}/dump_files/${pot}difDumploop.${aScaled}.txt
+shell rm adp1000/dump_files/${pot}difDumploop.${aScaled}.txt
+shell rm adp1000/dump_files/adpdifDumploop.${aScaled}.txt
+shell rm adp1000/dump_files/adpdifDumploop.3000.txt
+
+clear
+
+next        a
+jump        SELF loop
+
+variable    loopEnd equal (${tStep}/${sRate})*${nRuns}
+variable    loopEnd equal (1000/${sRate})*${nRuns}
+variable    loopEnd equal (1000/1000)*${nRuns}
+variable    loopEnd equal (1000/1000)*4
+variable    loopExit equal ${tStep}*${nRuns}
+variable    loopExit equal 1000*${nRuns}
+variable    loopExit equal 1000*4
+variable    a loop ${loopEnd}
+variable    a loop 4
+
+variable    aScaled equal $a*${sRate}
+variable    aScaled equal 4*${sRate}
+variable    aScaled equal 4*1000
+
+print       "timestep = ${aScaled}"
+timestep = 4000
+if          "${aScaled} > ${loopExit}" then "jump SELF break"
+
+# ---------- Create Atoms ------------------------------
+read_restart ${pathName}/restart_files/ref.restart.${aScaled}
+read_restart adp1000/restart_files/ref.restart.${aScaled}
+read_restart adp1000/restart_files/ref.restart.4000
+  restoring atom style atomic from restart
+  orthogonal box = (-0.00977641 -0.0169332 -0.0155296) to (8.85978 15.3456 14.0735)
+  1 by 1 by 1 MPI processor grid
+  pair style eam/fs stores no restart info
+  108 atoms
+  read_restart CPU = 9.4451e-05 secs
+
+print "Reading from restart file ref.restart.${aScaled}"
+Reading from restart file ref.restart.4000
+
+neighbor 2.0 bin
+neigh_modify every 1 delay 0 check yes
+
+# ---------- Define Interatomic Potential ---------------------
+if "${pot} == adp" then "pair_style adp"  "pair_coeff * * Ti.adp Ti" elif "${pot} == eam" "pair_style eam/fs"  "pair_coeff * * Ti2.eam.fs Ti" else "print 'Potential type not recognized.'" quit
+pair_style adp
+pair_coeff * * Ti.adp Ti
+
+compute apE all pe/atom
+
+#Create additional dump file containing only pos/vel data only if using adp potential
+if "${pot} == adp" then  "dump difDumploop all custom 1 ${pathName}/dump_files/${pot}difDumploop.${aScaled}.txt id x y z vx vy vz #fx fy fz c_apE" "dump_modify difDumploop sort id" #pbc yes
+dump difDumploop all custom 1 ${pathName}/dump_files/${pot}difDumploop.${aScaled}.txt id x y z vx vy vz #fx fy fz c_apE
+dump difDumploop all custom 1 adp1000/dump_files/${pot}difDumploop.${aScaled}.txt id x y z vx vy vz 
+dump difDumploop all custom 1 adp1000/dump_files/adpdifDumploop.${aScaled}.txt id x y z vx vy vz 
+dump difDumploop all custom 1 adp1000/dump_files/adpdifDumploop.4000.txt id x y z vx vy vz 
+dump_modify difDumploop sort id
+
+dump Dumploop all custom 1 ${pathName}/dump_files/${pot}Dumploop.${aScaled}.txt id x y z vx vy vz fx fy fz c_apE
+dump Dumploop all custom 1 adp1000/dump_files/${pot}Dumploop.${aScaled}.txt id x y z vx vy vz fx fy fz c_apE
+dump Dumploop all custom 1 adp1000/dump_files/adpDumploop.${aScaled}.txt id x y z vx vy vz fx fy fz c_apE
+dump Dumploop all custom 1 adp1000/dump_files/adpDumploop.4000.txt id x y z vx vy vz fx fy fz c_apE
+dump_modify Dumploop sort id #pbc yes
+
+run 0
+WARNING: No fixes defined, atoms won't move (src/verlet.cpp:52)
+Unused restart file global fix info:
+  fix style: npt, fix ID: 1
+Neighbor list info ...
+  update every 1 steps, delay 0 steps, check yes
+  max neighbors/atom: 2000, page size: 100000
+  master list distance cutoff = 7.5
+  ghost atom cutoff = 7.5
+  binsize = 3.75, bins = 3 5 4
+  1 neighbor lists, perpetual/occasional/extra = 1 0 0
+  (1) pair adp, perpetual
+      attributes: half, newton on
+      pair build: half/bin/atomonly/newton
+      stencil: half/bin/3d/newton
+      bin: standard
+Per MPI rank memory allocation (min/avg/max) = 8.539 | 8.539 | 8.539 Mbytes
+Step Temp E_pair E_mol TotEng Press 
+    4000    291.21956   -552.92675            0   -548.89894    266347.39 
+Loop time of 6.63e-07 on 1 procs for 0 steps with 108 atoms
+
+150.8% CPU use with 1 MPI tasks x no OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 0          | 0          | 0          |   0.0 |  0.00
+Neigh   | 0          | 0          | 0          |   0.0 |  0.00
+Comm    | 0          | 0          | 0          |   0.0 |  0.00
+Output  | 0          | 0          | 0          |   0.0 |  0.00
+Modify  | 0          | 0          | 0          |   0.0 |  0.00
+Other   |            | 6.63e-07   |            |       |100.00
+
+Nlocal:    108 ave 108 max 108 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Nghost:    1112 ave 1112 max 1112 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Neighs:    5186 ave 5186 max 5186 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+
+Total # of neighbors = 5186
+Ave neighs/atom = 48.0185
+Neighbor list builds = 0
+Dangerous builds = 0
+
+#append adpDump.txt with current snapshot of adpDumploop.txt
+shell cat ${pathName}/dump_files/${pot}Dumploop.${aScaled}.txt >> ${pathName}/dump_files/${pot}Dump.txt
+shell cat adp1000/dump_files/${pot}Dumploop.${aScaled}.txt >> ${pathName}/dump_files/${pot}Dump.txt
+shell cat adp1000/dump_files/adpDumploop.${aScaled}.txt >> ${pathName}/dump_files/${pot}Dump.txt
+shell cat adp1000/dump_files/adpDumploop.4000.txt >> ${pathName}/dump_files/${pot}Dump.txt
+shell cat adp1000/dump_files/adpDumploop.4000.txt >> adp1000/dump_files/${pot}Dump.txt
+shell cat adp1000/dump_files/adpDumploop.4000.txt >> adp1000/dump_files/adpDump.txt
+
+if "${pot} == adp" then  "shell cat ${pathName}/dump_files/${pot}difDumploop.${aScaled}.txt >> ${pathName}/dump_files/${pot}difDump.txt"
+shell cat ${pathName}/dump_files/${pot}difDumploop.${aScaled}.txt >> ${pathName}/dump_files/${pot}difDump.txt
+shell cat adp1000/dump_files/${pot}difDumploop.${aScaled}.txt >> ${pathName}/dump_files/${pot}difDump.txt
+shell cat adp1000/dump_files/adpdifDumploop.${aScaled}.txt >> ${pathName}/dump_files/${pot}difDump.txt
+shell cat adp1000/dump_files/adpdifDumploop.4000.txt >> ${pathName}/dump_files/${pot}difDump.txt
+shell cat adp1000/dump_files/adpdifDumploop.4000.txt >> adp1000/dump_files/${pot}difDump.txt
+shell cat adp1000/dump_files/adpdifDumploop.4000.txt >> adp1000/dump_files/adpdifDump.txt
+
+#delete intermediate adp dump file
+shell rm ${pathName}/dump_files/${pot}Dumploop.${aScaled}.txt
+shell rm adp1000/dump_files/${pot}Dumploop.${aScaled}.txt
+shell rm adp1000/dump_files/adpDumploop.${aScaled}.txt
+shell rm adp1000/dump_files/adpDumploop.4000.txt
+
+if "${pot} == adp" then  "shell rm ${pathName}/dump_files/${pot}difDumploop.${aScaled}.txt"
+shell rm ${pathName}/dump_files/${pot}difDumploop.${aScaled}.txt
+shell rm adp1000/dump_files/${pot}difDumploop.${aScaled}.txt
+shell rm adp1000/dump_files/adpdifDumploop.${aScaled}.txt
+shell rm adp1000/dump_files/adpdifDumploop.4000.txt
+
+clear
+
+next        a
+jump        SELF loop
+label       break
+variable    a delete
+
+#----------Call Python script to compare Dump files---------
+print "jumping back to main script"
+jumping back to main script
+jump in.base compareData
+
+variable refDump string ${pathName}/dump_files/refDump.txt
+variable refDump string adp1000/dump_files/refDump.txt
+variable potDump string ${pathName}/dump_files/${pot}Dump.txt
+variable potDump string adp1000/dump_files/${pot}Dump.txt
+variable potDump string adp1000/dump_files/adpDump.txt
+
+print "refDump location: ${refDump}"
+refDump location: adp1000/dump_files/refDump.txt
+print "potDump location: ${potDump}"
+potDump location: adp1000/dump_files/adpDump.txt
+print "atom multiplier: ${atomMult}"
+atom multiplier: 1
+
+#No good way to embedd a shell if within a Lammps if, so using a one-line shell if statement.
+if "${pot} == adp" then 'shell if cmp -s -- ${pathName}/dump_files/refDump.txt ${pathName}/dump_files/${pot}Dump.txt; then echo ${refDump} " and " ${potDump} " contain identical data, which is unexpected." ; else echo ${refDump} " and " ${potDump} " differ, which is expected." ; fi' elif "${pot} == eam" then 'shell if cmp -s -- ${pathName}/dump_files/refDump.txt ${pathName}/dump_files/${pot}Dump.txt; then echo ${refDump} " and " ${potDump} " contain identical data, which is expected." ; else echo ${refDump} " and " ${potDump} " differ, which is unexpected." ; fi'
+shell if cmp -s -- ${pathName}/dump_files/refDump.txt ${pathName}/dump_files/${pot}Dump.txt; then echo ${refDump} " and " ${potDump} " contain identical data, which is unexpected." ; else echo ${refDump} " and " ${potDump} " differ, which is expected." ; fi
+shell if cmp -s -- adp1000/dump_files/refDump.txt ${pathName}/dump_files/${pot}Dump.txt; then echo ${refDump} " and " ${potDump} " contain identical data, which is unexpected." ; else echo ${refDump} " and " ${potDump} " differ, which is expected." ; fi
+shell if cmp -s -- adp1000/dump_files/refDump.txt adp1000/dump_files/${pot}Dump.txt; then echo ${refDump} " and " ${potDump} " contain identical data, which is unexpected." ; else echo ${refDump} " and " ${potDump} " differ, which is expected." ; fi
+shell if cmp -s -- adp1000/dump_files/refDump.txt adp1000/dump_files/adpDump.txt; then echo ${refDump} " and " ${potDump} " contain identical data, which is unexpected." ; else echo ${refDump} " and " ${potDump} " differ, which is expected." ; fi
+shell if cmp -s -- adp1000/dump_files/refDump.txt adp1000/dump_files/adpDump.txt; then echo adp1000/dump_files/refDump.txt " and " ${potDump} " contain identical data, which is unexpected." ; else echo ${refDump} " and " ${potDump} " differ, which is expected." ; fi
+shell if cmp -s -- adp1000/dump_files/refDump.txt adp1000/dump_files/adpDump.txt; then echo adp1000/dump_files/refDump.txt " and " adp1000/dump_files/adpDump.txt " contain identical data, which is unexpected." ; else echo ${refDump} " and " ${potDump} " differ, which is expected." ; fi
+shell if cmp -s -- adp1000/dump_files/refDump.txt adp1000/dump_files/adpDump.txt; then echo adp1000/dump_files/refDump.txt " and " adp1000/dump_files/adpDump.txt " contain identical data, which is unexpected." ; else echo adp1000/dump_files/refDump.txt " and " ${potDump} " differ, which is expected." ; fi
+shell if cmp -s -- adp1000/dump_files/refDump.txt adp1000/dump_files/adpDump.txt; then echo adp1000/dump_files/refDump.txt " and " adp1000/dump_files/adpDump.txt " contain identical data, which is unexpected." ; else echo adp1000/dump_files/refDump.txt " and " adp1000/dump_files/adpDump.txt " differ, which is expected." ; fi
+
+
+shell which python3
+shell python3 --version
+shell python3 eval.py ${refDump} ${potDump} ${dFile} ${atomMult}
+shell python3 eval.py adp1000/dump_files/refDump.txt ${potDump} ${dFile} ${atomMult}
+shell python3 eval.py adp1000/dump_files/refDump.txt adp1000/dump_files/adpDump.txt ${dFile} ${atomMult}
+shell python3 eval.py adp1000/dump_files/refDump.txt adp1000/dump_files/adpDump.txt lammps.dat ${atomMult}
+shell python3 eval.py adp1000/dump_files/refDump.txt adp1000/dump_files/adpDump.txt lammps.dat 1
+
+#python compDump input 2 v_refDump v_potDump return v_evalDec format sss file eval.py
+#python compDump return v_evalDec format s file eval.py
+
+#print evalDec
+
+#if "${pot} == adp" then  #"python ..."
+#if pot== adp then
+#print "apd position and veolicty data matches refDump data"
+#elif pot = eam
+#print "eamDump.txt matches ref.txt"
+
+
+
+
+
+#print "All done!"
+Total wall time: 0:00:01

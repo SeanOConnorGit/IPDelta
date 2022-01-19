@@ -1,0 +1,124 @@
+#----------Define variables from in.param-------------
+
+jump in.param start
+
+label setup
+
+if "${tStep} == 0" then "print 'Must specify number of timesteps.'"  quit &
+ else "print 'tStep is ${tStep}'"
+
+#----------- Set Up Directories -----------------------
+variable pathName string ecoh${tStep}
+print "creating ${pathName} and subfolders..."
+shell mkdir ${pathName}
+shell mkdir ${pathName}/log_files
+shell mkdir ${pathName}/restart_files
+shell mkdir ${pathName}/dump_files
+shell mkdir ${pathName}/post_process
+
+#------------Copy log file to correct directory---------
+print "Log file located in ${pathName}/log_files/log.lammps."
+shell mv log.lammps ${pathName}/log_files/log.lammps
+log ${pathName}/log_files/log.lammps append
+
+# ---------- Initialize Simulation --------------------- 
+clear
+units metal
+dimension 3
+boundary p p p
+atom_style atomic
+atom_modify map array
+neighbor 2.0 bin
+neigh_modify every 1 delay 0 check yes
+
+# ---------- Create Atoms ------------------------------
+#variable dataFile string lammps.dat
+read_data ${dFile}
+replicate ${cellX} ${cellY} ${cellZ}
+
+# ---------- Define Interatomic Potential -------------- 
+pair_style eam/fs
+pair_coeff * * Ti2.eam.fs Ti
+ 
+# ---------- Define Settings ---------------------------
+compute apE all pe/atom
+compute eatoms all reduce sum c_apE
+variable nRuns loop 100 #increment with each command that runs for tSteps. nRuns starts at 1, so skip first run cmd.
+
+# ---------- Run Minimization --------------------------
+reset_timestep 0 
+thermo ${sRate}
+thermo_style custom step pe lx ly lz press pxx pyy pzz c_eatoms
+
+min_style sd
+minimize 1e-16 1e-16 10000 10000
+
+#-------Writing Dumps/Restarts--------------------------
+reset_timestep 0
+
+dump refDump all custom ${sRate} ${pathName}/dump_files/refDump.txt id x y z vx vy vz fx fy fz c_apE
+dump_modify refDump sort id #pbc yes
+
+restart ${sRate} ${pathName}/restart_files/ref.restart.*
+
+velocity all create 300.0 8675309 rot yes dist gaussian
+
+write_restart ${pathName}/restart_files/ref.restart.0
+#--------------------------------------------------------
+#initial mixing
+fix 1 all nvt temp 500 500 ${tDamp}
+run ${tStep}
+unfix 1
+#nRuns starts at 1 so don't increment this time.
+
+fix 1 all npt temp 500 500 ${tDamp} iso 0 0 ${pDamp}
+run ${tStep}
+unfix 1
+next nRuns
+
+#cooling
+fix 1 all npt temp 500 300 ${tDamp} iso 0 0 ${pDamp}
+run ${tStep}
+unfix 1
+next nRuns
+
+#final relax
+fix 1 all npt temp 300 300 ${tDamp} iso 0 0 ${pDamp}
+run ${tStep}
+unfix 1
+next nRuns
+
+variable natoms equal "count(all)"
+variable teng equal "c_eatoms"
+variable length equal "lx"
+variable ecoh equal "v_teng/v_natoms"
+
+print "Total energy (eV) = ${teng};"
+print "Number of atoms = ${natoms};"
+print "Lattice constant (Angstroms) = ${length};"
+print "Cohesive energy (eV) = ${ecoh};"
+
+#----------------Jump to potential script--------------
+print "Reference calculations complete. Ran ${nRuns} steps. Beginning ADP calculations."
+
+jump in.pot
+
+#---------------Python data validation-----------------
+label compareData
+
+variable dumpPath string ${pathName}/dump_files/
+variable postPath string ${pathName}/post_process/
+
+print "Lammps dump location: ${dumpPath}"
+
+#No good way to embedd a shell if within a Lammps if, so using a one-line shell if statement.
+if "${pot} == adp" then &
+'shell if cmp -s -- ${dumpPath}/refDump.txt ${dumpPath}/${pot}Dump.txt; then echo ${dumpPath}/refDump.txt " and " ${dumpPath}/${pot}Dump.txt " contain identical data, which is unexpected." ; else echo ${dumpPath}/refDump.txt " and " ${dumpPath}/${pot}Dump.txt" differ, which is expected." ; fi' &
+elif "${pot} == eam" &
+'shell if cmp -s -- ${dumpPath}/refDump.txt ${dumpPath}/${pot}Dump.txt; then echo ${dumpPath}/refDump.txt " and " ${dumpPath}/${pot}Dump.txt " contain identical data, which is expected." ; else echo ${dumpPath}/refDump.txt" and " ${dumpPath}/${pot}Dump.txt " differ, which is unexpected." ; fi'
+
+print "Leaving Lammps script. Beginning data ANN pre-processing with Python."
+print "Python data files will be created in: ${postPath}."
+shell which python3
+shell python3 --version
+shell python3 eval.py ${dumpPath} ${postPath} ${pot} 
